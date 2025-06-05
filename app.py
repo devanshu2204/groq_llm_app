@@ -1,13 +1,31 @@
 import streamlit as st
 import time
 from groq import Groq
-import os
 
-# Initialize Grok client
-client = Groq(api_key=os.getenv("GROK_API_KEY"))
+# Initialize Groq client
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-# Streamlit app configuration
-st.set_page_config(page_title="FlutterBot - Grok Chat", layout="centered")
+# Define message structure
+class Message:
+    def __init__(self, id: str, text: str, is_user: bool, timestamp: float):
+        self.id = id
+        self.text = text
+        self.is_user = is_user
+        self.timestamp = timestamp
+
+# Initial bot message
+INITIAL_MESSAGES = [
+    Message(
+        id="1",
+        text="Hi there! I'm FlutterBot, now powered by Groq. How can I help you today?",
+        is_user=False,
+        timestamp=time.time() - 60
+    )
+]
+
+# Streamlit app setup
+st.set_page_config(page_title="FlutterBot - Groq Chat", layout="centered")
+st.title("FlutterBot Chat")
 
 # Custom CSS for styling
 st.markdown("""
@@ -15,81 +33,74 @@ st.markdown("""
     .stApp {
         max-width: 600px;
         margin: 0 auto;
+        padding: 20px;
     }
     .chat-container {
         border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        background-color: #ffffff;
         height: 600px;
         display: flex;
         flex-direction: column;
     }
-    .chat-header {
-        padding: 16px;
-        border-bottom: 1px solid #e2e8f0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background-color: #f8fafc;
-    }
-    .chat-messages {
+    .message-container {
         flex: 1;
         overflow-y: auto;
-        padding: 16px;
-        background-color: #f1f5f9;
-    }
-    .message {
-        margin-bottom: 16px;
-        display: flex;
-        align-items: flex-start;
+        padding: 1rem;
     }
     .user-message {
-        justify-content: flex-end;
+        background-color: #1e40af;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 1rem;
+        border-bottom-right-radius: 0.25rem;
+        max-width: 85%;
+        align-self: flex-end;
+        margin-bottom: 1rem;
     }
     .bot-message {
-        justify-content: flex-start;
-    }
-    .message-bubble {
-        padding: 8px 16px;
-        border-radius: 16px;
+        background-color: #e5e7eb;
+        color: #1f2937;
+        padding: 0.5rem 1rem;
+        border-radius: 1rem;
+        border-bottom-left-radius: 0.25rem;
         max-width: 85%;
-    }
-    .user-bubble {
-        background-color: #2563eb;
-        color: white;
-        border-bottom-right-radius: 4px;
-    }
-    .bot-bubble {
-        background-color: #e2e8f0;
-        color: #1e293b;
-        border-bottom-left-radius: 4px;
+        align-self: flex-start;
+        margin-bottom: 1rem;
     }
     .timestamp {
-        font-size: 12px;
-        color: #64748b;
-        margin-top: 4px;
-        padding: 0 4px;
+        font-size: 0.75rem;
+        color: #6b7280;
+        margin-top: 0.25rem;
+        padding: 0 0.25rem;
+    }
+    .input-container {
+        padding: 1rem;
+        border-top: 1px solid #e2e8f0;
     }
     .typing-indicator {
         display: flex;
-        gap: 4px;
-        padding: 12px 16px;
-        background-color: #e2e8f0;
-        border-radius: 16px;
-        width: 64px;
-        border-bottom-left-radius: 4px;
+        gap: 0.25rem;
+        padding: 0.75rem 1rem;
+        background-color: #e5e7eb;
+        border-radius: 1rem;
+        border-bottom-left-radius: 0.25rem;
+        width: 4rem;
+        align-self: flex-start;
     }
-    .dot {
-        width: 8px;
-        height: 8px;
-        background-color: #94a3b8;
+    .typing-dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        background-color: #6b7280;
         border-radius: 50%;
+        opacity: 0.6;
         animation: blink 1.4s infinite both;
     }
-    .dot:nth-child(2) {
+    .typing-dot:nth-child(2) {
         animation-delay: 0.2s;
     }
-    .dot:nth-child(3) {
+    .typing-dot:nth-child(3) {
         animation-delay: 0.4s;
     }
     @keyframes blink {
@@ -97,123 +108,126 @@ st.markdown("""
         20% { opacity: 1; }
         100% { opacity: 0.1; }
     }
-    .input-container {
-        padding: 16px;
-        border-top: 1px solid #e2e8f0;
-        background-color: #ffffff;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state for messages
+# Initialize session state for messages and typing indicator
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "id": "1",
-            "text": "Hi there! I'm FlutterBot, powered by Grok. How can I help you today?",
-            "is_user": False,
-            "timestamp": time.strftime("%H:%M")
-        }
-    ]
+    st.session_state.messages = INITIAL_MESSAGES
 if "is_typing" not in st.session_state:
     st.session_state.is_typing = False
 
-# Function to get Grok response
-def get_grok_response(user_input):
+# Function to get Groq response
+def get_groq_response(user_input: str) -> str:
     try:
         chat_completion = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are FlutterBot, a helpful chatbot inspired by Flutter and powered by Grok. Assist users with a friendly tone."},
+                {"role": "system", "content": "You are FlutterBot, a helpful chatbot inspired by Flutter, powered by Groq. Assist users with questions about Flutter, UI design, or general queries."},
                 {"role": "user", "content": user_input}
             ],
             model="mixtral-8x7b-32768",
             temperature=0.7,
-            max_tokens=1024
+            max_tokens=500
         )
         return chat_completion.choices[0].message.content
     except Exception as e:
         return f"Sorry, I encountered an error: {str(e)}"
 
+# Function to handle message submission
+def handle_send_message(text: str):
+    if text.strip():
+        # Add user message
+        user_message = Message(
+            id=str(time.time()),
+            text=text,
+            is_user=True,
+            timestamp=time.time()
+        )
+        st.session_state.messages.append(user_message)
+        
+        # Show typing indicator
+        st.session_state.is_typing = True
+        
+        # Get bot response
+        bot_response = get_groq_response(text)
+        
+        # Add bot message
+        bot_message = Message(
+            id=str(time.time() + 1),
+            text=bot_response,
+            is_user=False,
+            timestamp=time.time()
+        )
+        st.session_state.messages.append(bot_message)
+        
+        # Hide typing indicator
+        st.session_state.is_typing = False
+
+# Chat container
+st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+
 # Chat header
 st.markdown("""
-<div class='chat-container'>
-    <div class='chat-header'>
-        <div style='display: flex; align-items: center; gap: 12px;'>
-            <h2 style='margin: 0; font-size: 18px; font-weight: 500;'>FlutterBot</h2>
-            <p style='margin: 0; font-size: 12px; color: #16a34a;'>Online</p>
+<div style="padding: 0.75rem; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 10; background-color: #ffffff;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <h2 style="font-weight: 500;">FlutterBot</h2>
+            <p style="font-size: 0.75rem; color: #16a34a;">Online</p>
         </div>
     </div>
+</div>
 """, unsafe_allow_html=True)
 
-# Chat messages
-st.markdown("<div class='chat-messages'>", unsafe_allow_html=True)
+# Message display area
+st.markdown('<div class="message-container">', unsafe_allow_html=True)
 for message in st.session_state.messages:
-    direction = "user-message" if message["is_user"] else "bot-message"
-    bubble_style = "user-bubble" if message["is_user"] else "bot-bubble"
-    st.markdown(
-        f"""
-        <div class='message {direction}'>
-            <div style='display: flex; flex-direction: column; max-width: 85%;'>
-                <div class='message-bubble {bubble_style}'>
-                    {message['text']}
-                </div>
-                <span class='timestamp'>
-                    {message['timestamp']}
-                </span>
+    time_str = time.strftime("%H:%M", time.localtime(message.timestamp))
+    if message.is_user:
+        st.markdown(f"""
+        <div style="display: flex; justify-content: flex-end; width: 100%;">
+            <div style="display: flex; flex-direction: column; align-items: flex-end; max-width: 85%;">
+                <div class="user-message">{message.text}</div>
+                <span class="timestamp">{time_str}</span>
             </div>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div style="display: flex; justify-content: flex-start; width: 100%;">
+            <div style="display: flex; flex-direction: column; align-items: flex-start; max-width: 85%;">
+                <div class="bot-message">{message.text}</div>
+                <span class="timestamp">{time_str}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # Typing indicator
 if st.session_state.is_typing:
     st.markdown("""
-    <div class='message bot-message'>
-        <div class='typing-indicator'>
-            <span class='dot'></span>
-            <span class='dot'></span>
-            <span class='dot'></span>
-        </div>
+    <div class="typing-indicator">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
     </div>
     """, unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# Message input
-st.markdown("<div class='input-container'>", unsafe_allow_html=True)
-user_input = st.text_input("Type your message...", key="user_input", on_change=None)
+# Message input area
+st.markdown('<div class="input-container">', unsafe_allow_html=True)
+user_input = st.text_input("Type your message...", key="user_input")
 if st.button("Send"):
-    if user_input:
-        # Add user message
-        st.session_state.messages.append({
-            "id": str(time.time()),
-            "text": user_input,
-            "is_user": True,
-            "timestamp": time.strftime("%H:%M")
-        })
-        
-        # Show typing indicator
-        st.session_state.is_typing = True
-        st.rerun()
-        
-        # Get and add bot response
-        bot_response = get_grok_response(user_input)
-        st.session_state.is_typing = False
-        st.session_state.messages.append({
-            "id": str(time.time() + 1),
-            "text": bot_response,
-            "is_user": False,
-            "timestamp": time.strftime("%H:%M")
-        })
-        st.rerun()
+    handle_send_message(user_input)
+st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# Note about API key
+# Auto-scroll to bottom
 st.markdown("""
-<div style='margin-top: 16px; font-size: 12px; color: #64748b;'>
-    Note: Ensure GROK_API_KEY is set in your environment variables. Get your key from https://x.ai/api
-</div>
+<script>
+    const messageContainer = document.querySelector('.message-container');
+    if (messageContainer) {
+        messageContainer.scrollTop = messageContainer.scrollHeight;
+    }
+</script>
 """, unsafe_allow_html=True)
