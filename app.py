@@ -24,33 +24,50 @@ INITIAL_MESSAGES = [
 ]
 
 # Streamlit app setup
-st.set_page_config(page_title="FlutterBot - Groq Chat", layout="centered")
+st.set_page_config(page_title="FlutterBot Chat", layout="centered")
 st.title("FlutterBot Chat")
 
-# Custom CSS for styling
-st.markdown("""
+# Dark mode toggle
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+
+dark_mode = st.toggle("Dark Mode", value=st.session_state.dark_mode, key="dark_mode_toggle")
+st.session_state.dark_mode = dark_mode
+
+# Custom CSS for styling with dark mode support
+st.markdown(f"""
 <style>
-    .stApp {
+    .stApp {{
         max-width: 600px;
         margin: 0 auto;
         padding: 20px;
-    }
-    .chat-container {
-        border: 1px solid #e2e8f0;
+    }}
+    .chat-container {{
+        border: 1px solid {'#4b5563' if dark_mode else '#e2e8f0'};
         border-radius: 0.5rem;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        background-color: #ffffff;
+        background-color: {'#1f2937' if dark_mode else '#ffffff'};
         height: 600px;
         display: flex;
         flex-direction: column;
-    }
-    .message-container {
+    }}
+    .chat-header {{
+        padding: 0.75rem;
+        border-bottom: 1px solid {'#4b5563' if dark_mode else '#e2e8f0'};
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background-color: {'#1f2937' if dark_mode else '#ffffff'};
+        color: {'#ffffff' if dark_mode else '#000000'};
+    }}
+    .message-container {{
         flex: 1;
         overflow-y: auto;
         padding: 1rem;
-    }
-    .user-message {
-        background-color: #1e40af;
+        background-color: {'#111827' if dark_mode else '#f9fafb'};
+    }}
+    .user-message {{
+        background-color: {'#2563eb' if dark_mode else '#1e40af'};
         color: white;
         padding: 0.5rem 1rem;
         border-radius: 1rem;
@@ -58,56 +75,57 @@ st.markdown("""
         max-width: 85%;
         align-self: flex-end;
         margin-bottom: 1rem;
-    }
-    .bot-message {
-        background-color: #e5e7eb;
-        color: #1f2937;
+    }}
+    .bot-message {{
+        background-color: {'#374151' if dark_mode else '#e5e7eb'};
+        color: {'#ffffff' if dark_mode else '#1f2937'};
         padding: 0.5rem 1rem;
         border-radius: 1rem;
         border-bottom-left-radius: 0.25rem;
         max-width: 85%;
         align-self: flex-start;
         margin-bottom: 1rem;
-    }
-    .timestamp {
+    }}
+    .timestamp {{
         font-size: 0.75rem;
-        color: #6b7280;
+        color: {'#9ca3af' if dark_mode else '#6b7280'};
         margin-top: 0.25rem;
         padding: 0 0.25rem;
-    }
-    .input-container {
+    }}
+    .input-container {{
         padding: 1rem;
-        border-top: 1px solid #e2e8f0;
-    }
-    .typing-indicator {
+        border-top: 1px solid {'#4b5563' if dark_mode else '#e2e8f0'};
+        background-color: {'#1f2937' if dark_mode else '#ffffff'};
+    }}
+    .typing-indicator {{
         display: flex;
         gap: 0.25rem;
         padding: 0.75rem 1rem;
-        background-color: #e5e7eb;
+        background-color: {'#374151' if dark_mode else '#e5e7eb'};
         border-radius: 1rem;
         border-bottom-left-radius: 0.25rem;
         width: 4rem;
         align-self: flex-start;
-    }
-    .typing-dot {
+    }}
+    .typing-dot {{
         width: 0.5rem;
         height: 0.5rem;
-        background-color: #6b7280;
+        background-color: {'#9ca3af' if dark_mode else '#6b7280'};
         border-radius: 50%;
         opacity: 0.6;
         animation: blink 1.4s infinite both;
-    }
-    .typing-dot:nth-child(2) {
+    }}
+    .typing-dot:nth-child(2) {{
         animation-delay: 0.2s;
-    }
-    .typing-dot:nth-child(3) {
+    }}
+    .typing-dot:nth-child(3) {{
         animation-delay: 0.4s;
-    }
-    @keyframes blink {
-        0% { opacity: 0.1; }
-        20% { opacity: 1; }
-        100% { opacity: 0.1; }
-    }
+    }}
+    @keyframes blink {{
+        0% {{ opacity: 0.1; }}
+        20% {{ opacity: 1; }}
+        100% {{ opacity: 0.1; }}
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -117,14 +135,21 @@ if "messages" not in st.session_state:
 if "is_typing" not in st.session_state:
     st.session_state.is_typing = False
 
-# Function to get Groq response
+# Function to get Groq response with chat history
 def get_groq_response(user_input: str) -> str:
     try:
+        # Build message history
+        messages = [
+            {"role": "system", "content": "You are FlutterBot, a helpful chatbot inspired by Flutter, powered by Groq. Assist users with questions about Flutter, UI design, or general queries."}
+        ]
+        # Add previous messages for context (limit to last 5 to avoid token overflow)
+        for msg in st.session_state.messages[-5:]:
+            role = "user" if msg.is_user else "assistant"
+            messages.append({"role": role, "content": msg.text})
+        messages.append({"role": "user", "content": user_input})
+
         chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": "You are FlutterBot, a helpful chatbot inspired by Flutter, powered by Groq. Assist users with questions about Flutter, UI design, or general queries."},
-                {"role": "user", "content": user_input}
-            ],
+            messages=messages,
             model="mixtral-8x7b-32768",
             temperature=0.7,
             max_tokens=500
@@ -144,13 +169,13 @@ def handle_send_message(text: str):
             timestamp=time.time()
         )
         st.session_state.messages.append(user_message)
-        
+
         # Show typing indicator
         st.session_state.is_typing = True
-        
+
         # Get bot response
         bot_response = get_groq_response(text)
-        
+
         # Add bot message
         bot_message = Message(
             id=str(time.time() + 1),
@@ -159,18 +184,19 @@ def handle_send_message(text: str):
             timestamp=time.time()
         )
         st.session_state.messages.append(bot_message)
-        
+
         # Hide typing indicator
         st.session_state.is_typing = False
 
 # Chat container
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
-# Chat header
-st.markdown("""
-<div style="padding: 0.75rem; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 10; background-color: #ffffff;">
+# Chat header with Back button
+st.markdown(f"""
+<div class="chat-header">
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button onclick="history.back()" style="border: none; background: none; cursor: pointer; color: {'#ffffff' if dark_mode else '#000000'}; font-size: 1.2rem;">⬅️</button>
             <h2 style="font-weight: 500;">FlutterBot</h2>
             <p style="font-size: 0.75rem; color: #16a34a;">Online</p>
         </div>
@@ -181,7 +207,7 @@ st.markdown("""
 # Message display area
 st.markdown('<div class="message-container">', unsafe_allow_html=True)
 for message in st.session_state.messages:
-    time_str = time.strftime("%H:%M", time.localtime(message.timestamp))
+    time_str = time.strftime("%I:%M %p", time.localtime(message.timestamp))
     if message.is_user:
         st.markdown(f"""
         <div style="display: flex; justify-content: flex-end; width: 100%;">
@@ -213,21 +239,28 @@ if st.session_state.is_typing:
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Message input area
+# Message input area with form to reduce reruns
 st.markdown('<div class="input-container">', unsafe_allow_html=True)
-user_input = st.text_input("Type your message...", key="user_input")
-if st.button("Send"):
-    handle_send_message(user_input)
+with st.form(key="message_form", clear_on_submit=True):
+    user_input = st.text_input("Type your message...", key="user_input")
+    submit_button = st.form_submit_button("Send")
+    if submit_button and user_input.strip():
+        handle_send_message(user_input)
 st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Auto-scroll to bottom
+# Auto-scroll to bottom and enable Enter key submission
 st.markdown("""
 <script>
     const messageContainer = document.querySelector('.message-container');
     if (messageContainer) {
         messageContainer.scrollTop = messageContainer.scrollHeight;
     }
+    document.getElementById('user_input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            document.querySelector('button').click();
+        }
+    });
 </script>
 """, unsafe_allow_html=True)
